@@ -45,14 +45,17 @@ class PlayerInteractions extends ChangeNotifier {
   bool _held = false;
   bool _boosting = false;
   bool _keyboardHold = false;
-  /// 长按借速区间：默认 3 倍，上滑最高 5 倍，下滑最低 2 倍。
+  /// 长按借速三档：上滑 5 倍、默认 3 倍、下滑 2 倍。
   static const double _boostBaseRate = 3;
   static const double _boostMaxRate = 5;
   static const double _boostMinRate = 2;
-  /// 手指滑动多少像素走完整个区间。
-  static const double _boostTravel = 150;
-  /// 起调死区，避免手指轻微抖动就改倍速。
-  static const double _boostDeadZone = 14;
+  /// 上下滑多少像素切到极值档。
+  static const double _boostUpThreshold = 40;
+  static const double _boostDownThreshold = 40;
+  /// 横向拖动进度用的画布宽度与预览目标。
+  double _width = 1;
+  bool _seeking = false;
+  Duration? _seekTarget;
   double _boostRate = _boostBaseRate;
   bool _cancelUntilRelease = false;
   bool _disposed = false;
@@ -145,6 +148,8 @@ class PlayerInteractions extends ChangeNotifier {
     _pointer = null;
     _origin = null;
     _lastPosition = null;
+    _seeking = false;
+    _seekTarget = null;
     _endHold(silent: true);
     hint('');
   }
@@ -153,6 +158,7 @@ class PlayerInteractions extends ChangeNotifier {
     PointerDownEvent event, {
     required bool swipeEnabled,
     required double height,
+    required double width,
   }) {
     _pointers.add(event.pointer);
     if (_pointers.length != 1 || _cancelUntilRelease) {
@@ -165,6 +171,9 @@ class PlayerInteractions extends ChangeNotifier {
     _started = event.timeStamp;
     _swipeEnabled = swipeEnabled && event.kind == PointerDeviceKind.touch;
     _swipeThreshold = math.max(56, math.min(100, height * .1));
+    _width = width;
+    _seeking = false;
+    _seekTarget = null;
     _moved = _held = false;
     _beginHold();
   }
@@ -174,8 +183,21 @@ class PlayerInteractions extends ChangeNotifier {
     final delta = event.localPosition - _origin!;
     _lastPosition = event.localPosition;
     if (_boosting) {
-      // 借速期间上下滑调节倍速，不再中断借速
+      // 借速期间上下滑切档位，不再中断借速
       _adjustBoost(delta.dy);
+      return;
+    }
+    if (!_seeking &&
+        _swipeEnabled &&
+        delta.dx.abs() > 24 &&
+        delta.dx.abs() > delta.dy.abs() * 1.4) {
+      // 横向为主：进入进度拖动，同时取消待触发的长按
+      _seeking = true;
+      _moved = true;
+      _endHold();
+    }
+    if (_seeking) {
+      _previewSeek(delta.dx);
       return;
     }
     if (delta.distance > 12) {
@@ -184,18 +206,43 @@ class PlayerInteractions extends ChangeNotifier {
     }
   }
 
-  /// 上滑提速、下滑降速，无级调节并保留一位小数。
+  /// 横向拖动预览进度：满屏宽约合 120 秒（短剧一集刚好滑完），松手才真正跳转。
+  void _previewSeek(double dx) {
+    final duration = player.state.duration;
+    if (duration <= Duration.zero) return;
+    final width = _width.isFinite && _width > 0 ? _width : 1.0;
+    final span = (duration.inSeconds * 0.5).clamp(30.0, 120.0).toDouble();
+    final shift = (dx / width) * span;
+    final target =
+        player.state.position.inMilliseconds + (shift * 1000).round();
+    final clamped = target.clamp(0, duration.inMilliseconds).toInt();
+    _seekTarget = Duration(milliseconds: clamped);
+    hint(
+      '${shift >= 0 ? '快进至' : '后退至'} ${formatPosition(clamped / 1000)}',
+      persistent: true,
+      quiet: true,
+    );
+  }
+
+  /// 三档借速：上滑到 5 倍、默认 3 倍、下滑到 2 倍。
   void _adjustBoost(double dy) {
     if (!_boosting) return;
-    final travel = ((dy.abs() - _boostDeadZone) / _boostTravel).clamp(0.0, 1.0);
-    final rate = dy.isNegative
-        ? _boostBaseRate + travel * (_boostMaxRate - _boostBaseRate)
-        : _boostBaseRate - travel * (_boostBaseRate - _boostMinRate);
-    final snapped = (rate * 10).roundToDouble() / 10;
-    if (snapped == _boostRate) return;
-    _boostRate = snapped;
-    unawaited(_setRate(snapped));
-    hint('${formatBoostRate(snapped)} 上滑加速 · 下滑减速', persistent: true, quiet: true);
+    final double rate;
+    if (dy <= -_boostUpThreshold) {
+      rate = _boostMaxRate;
+    } else if (dy >= _boostDownThreshold) {
+      rate = _boostMinRate;
+    } else {
+      rate = _boostBaseRate;
+    }
+    if (rate == _boostRate) return;
+    _boostRate = rate;
+    unawaited(_setRate(rate));
+    hint(
+      '${formatBoostRate(rate)} 上滑加速 · 下滑减速',
+      persistent: true,
+      quiet: true,
+    );
   }
 
   String formatBoostRate(double value) => value == value.roundToDouble()
@@ -210,6 +257,19 @@ class PlayerInteractions extends ChangeNotifier {
       return;
     }
     if (_pointer != event.pointer || _origin == null) return;
+    if (_seeking) {
+      final target = _seekTarget;
+      _seeking = false;
+      _seekTarget = null;
+      _pointer = null;
+      _origin = null;
+      _ignoreTapUntil = DateTime.now().add(const Duration(milliseconds: 400));
+      hint('');
+      if (target != null && available()) {
+        unawaited((onSeek ?? player.seek)(target));
+      }
+      return;
+    }
     final delta = (_lastPosition ?? event.localPosition) - _origin!;
     final swipe =
         _swipeEnabled &&

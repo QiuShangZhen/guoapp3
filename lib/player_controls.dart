@@ -236,6 +236,7 @@ class _PlayerControlsState extends State<PlayerControls> {
                   event,
                   swipeEnabled: widget.swipeEnabled,
                   height: constraints.maxHeight,
+                  width: constraints.maxWidth,
                 );
               },
               onPointerMove: widget.interactions.pointerMove,
