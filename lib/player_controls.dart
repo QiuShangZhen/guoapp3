@@ -993,7 +993,9 @@ class _PlayerControlsState extends State<PlayerControls> {
     animation: widget.interactions,
     builder: (context, _) {
       if (widget.interactions.boosting) {
-        return const IgnorePointer(child: _BoostBadge());
+        return IgnorePointer(
+          child: _BoostBadge(rate: widget.interactions.boostRate),
+        );
       }
       final feedback = widget.interactions.feedback;
       if (feedback.isEmpty) return const SizedBox.shrink();
@@ -1017,10 +1019,15 @@ class _PlayerControlsState extends State<PlayerControls> {
 
 /// 长按借速时的右上角小角标，替代原来的中央提示条，尽量不遮挡画面。
 class _BoostBadge extends StatelessWidget {
-  const _BoostBadge();
+  const _BoostBadge({required this.rate});
+
+  final double rate;
 
   @override
   Widget build(BuildContext context) {
+    final label = rate == rate.roundToDouble()
+        ? '${rate.toStringAsFixed(0)}×'
+        : '${rate.toStringAsFixed(1)}×';
     return SafeArea(
       minimum: const EdgeInsets.all(12),
       child: Align(
@@ -1031,9 +1038,9 @@ class _BoostBadge extends StatelessWidget {
             color: Colors.black54,
             borderRadius: BorderRadius.circular(20),
           ),
-          child: const Text(
-            '3×',
-            style: TextStyle(
+          child: Text(
+            label,
+            style: const TextStyle(
               color: Colors.white,
               fontSize: 13,
               height: 1.2,

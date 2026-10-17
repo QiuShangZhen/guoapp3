@@ -45,6 +45,15 @@ class PlayerInteractions extends ChangeNotifier {
   bool _held = false;
   bool _boosting = false;
   bool _keyboardHold = false;
+  /// 长按借速区间：默认 3 倍，上滑最高 5 倍，下滑最低 2 倍。
+  static const double _boostBaseRate = 3;
+  static const double _boostMaxRate = 5;
+  static const double _boostMinRate = 2;
+  /// 手指滑动多少像素走完整个区间。
+  static const double _boostTravel = 150;
+  /// 起调死区，避免手指轻微抖动就改倍速。
+  static const double _boostDeadZone = 14;
+  double _boostRate = _boostBaseRate;
   bool _cancelUntilRelease = false;
   bool _disposed = false;
   double _unmutedVolume = 100;
@@ -54,6 +63,7 @@ class PlayerInteractions extends ChangeNotifier {
 
   String get feedback => _feedback;
   bool get boosting => _boosting;
+  double get boostRate => _boostRate;
   bool get quietFeedback => _quiet;
   bool get suppressTap => DateTime.now().isBefore(_ignoreTapUntil);
   Future<void> get pendingRates => _rates;
@@ -104,7 +114,8 @@ class PlayerInteractions extends ChangeNotifier {
       }
       _boosting = true;
       _held = true;
-      unawaited(_setRate(3));
+      _boostRate = _boostBaseRate;
+      unawaited(_setRate(_boostRate));
       hint('3 倍速 · 松开恢复', persistent: true, quiet: true);
     });
   }
@@ -116,6 +127,7 @@ class PlayerInteractions extends ChangeNotifier {
     _holdTimer = null;
     _keyboardHold = false;
     _boosting = false;
+    _boostRate = _boostBaseRate;
     if (boosted) {
       unawaited(_setRate(baseSpeed()));
       if (!silent) hint('', quiet: true);
@@ -159,12 +171,36 @@ class PlayerInteractions extends ChangeNotifier {
 
   void pointerMove(PointerMoveEvent event) {
     if (_pointer != event.pointer || _origin == null) return;
+    final delta = event.localPosition - _origin!;
     _lastPosition = event.localPosition;
-    if ((event.localPosition - _origin!).distance > 12) {
+    if (_boosting) {
+      // 借速期间上下滑调节倍速，不再中断借速
+      _adjustBoost(delta.dy);
+      return;
+    }
+    if (delta.distance > 12) {
       _moved = true;
       _endHold();
     }
   }
+
+  /// 上滑提速、下滑降速，无级调节并保留一位小数。
+  void _adjustBoost(double dy) {
+    if (!_boosting) return;
+    final travel = ((dy.abs() - _boostDeadZone) / _boostTravel).clamp(0.0, 1.0);
+    final rate = dy.isNegative
+        ? _boostBaseRate + travel * (_boostMaxRate - _boostBaseRate)
+        : _boostBaseRate - travel * (_boostBaseRate - _boostMinRate);
+    final snapped = (rate * 10).roundToDouble() / 10;
+    if (snapped == _boostRate) return;
+    _boostRate = snapped;
+    unawaited(_setRate(snapped));
+    hint('${formatBoostRate(snapped)} 上滑加速 · 下滑减速', persistent: true, quiet: true);
+  }
+
+  String formatBoostRate(double value) => value == value.roundToDouble()
+      ? '${value.toStringAsFixed(0)}×'
+      : '${value.toStringAsFixed(1)}×';
 
   void pointerUp(PointerUpEvent event) {
     _pointers.remove(event.pointer);

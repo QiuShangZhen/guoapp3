@@ -31,12 +31,12 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.duanju.zhenguojian.lite"
+        applicationId = "com.duanju.zhenguojian.litedev"
         minSdk = 26
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = "${flutter.versionName}-lite"
-        manifestPlaceholders["appLabel"] = "真果鉴 Lite"
+        manifestPlaceholders["appLabel"] = "真果鉴 Lite+"
         manifestPlaceholders["appBanner"] = "@drawable/tv_banner_all_sources"
     }
 
