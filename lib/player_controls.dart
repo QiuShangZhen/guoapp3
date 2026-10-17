@@ -99,7 +99,10 @@ class _PlayerControlsState extends State<PlayerControls> {
   }
 
   void _interactionChanged() {
-    if (mounted && widget.interactions.feedback.isNotEmpty) _show();
+    if (!mounted) return;
+    // 长按借速的 HUD 只更新提示条，不唤醒控件层，避免盖上半透明灰蒙版。
+    if (widget.interactions.quietFeedback) return;
+    if (widget.interactions.feedback.isNotEmpty) _show();
   }
 
   void _scheduleHide() {
@@ -132,15 +135,9 @@ class _PlayerControlsState extends State<PlayerControls> {
   void _tap() {
     if (widget.interactions.suppressTap) return;
     widget.onFocusSurface();
-    if (widget.swipeEnabled &&
-        MediaQuery.orientationOf(context) == Orientation.portrait &&
-        widget.enabled) {
-      widget.onTogglePlayback();
-      _show();
-    } else {
-      setState(() => _visible = !_visible);
-      _scheduleHide();
-    }
+    // 单击只切换控件层显隐，不再直接暂停；暂停请按控件层的播放键或双击画面。
+    setState(() => _visible = !_visible);
+    _scheduleHide();
   }
 
   Future<void> _panel(Future<void> Function() open) async {
@@ -468,6 +465,9 @@ class _PlayerControlsState extends State<PlayerControls> {
             AnimatedBuilder(
               animation: widget.interactions,
               builder: (context, _) {
+                if (widget.interactions.boosting) {
+                  return const IgnorePointer(child: _BoostBadge());
+                }
                 final feedback = widget.interactions.feedback;
                 if (feedback.isEmpty) return const SizedBox.shrink();
                 return IgnorePointer(
@@ -490,6 +490,37 @@ class _PlayerControlsState extends State<PlayerControls> {
               },
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// 长按借速时的右上角小角标，替代原来的中央提示条，尽量不遮挡画面。
+class _BoostBadge extends StatelessWidget {
+  const _BoostBadge();
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      minimum: const EdgeInsets.all(12),
+      child: Align(
+        alignment: Alignment.topRight,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+          decoration: BoxDecoration(
+            color: Colors.black54,
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: const Text(
+            '3×',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 13,
+              height: 1.2,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
         ),
       ),
     );

@@ -49,23 +49,30 @@ class PlayerInteractions extends ChangeNotifier {
   bool _disposed = false;
   double _unmutedVolume = 100;
   String _feedback = '';
+  bool _quiet = false;
   DateTime _ignoreTapUntil = DateTime(2000);
 
   String get feedback => _feedback;
   bool get boosting => _boosting;
+  bool get quietFeedback => _quiet;
   bool get suppressTap => DateTime.now().isBefore(_ignoreTapUntil);
   Future<void> get pendingRates => _rates;
 
-  void hint(String message, {bool persistent = false}) {
+  void hint(String message, {bool persistent = false, bool quiet = false}) {
     if (_disposed) return;
     _hintTimer?.cancel();
+    _quiet = quiet;
     if (_feedback != message) {
       _feedback = message;
       notifyListeners();
     }
     if (!persistent && message.isNotEmpty) {
       _hintTimer = Timer(const Duration(milliseconds: 1200), () {
-        hint(_boosting ? '3 倍速 · 松开恢复' : '', persistent: true);
+        hint(
+          _boosting ? '3 倍速 · 松开恢复' : '',
+          persistent: true,
+          quiet: _boosting,
+        );
       });
     }
   }
@@ -98,7 +105,7 @@ class PlayerInteractions extends ChangeNotifier {
       _boosting = true;
       _held = true;
       unawaited(_setRate(3));
-      hint('3 倍速 · 松开恢复', persistent: true);
+      hint('3 倍速 · 松开恢复', persistent: true, quiet: true);
     });
   }
 
@@ -111,7 +118,7 @@ class PlayerInteractions extends ChangeNotifier {
     _boosting = false;
     if (boosted) {
       unawaited(_setRate(baseSpeed()));
-      if (!silent) hint('恢复 ${baseSpeed()} 倍速');
+      if (!silent) hint('', quiet: true);
     } else if (tap && wasKeyboard) {
       seek(5);
     }
