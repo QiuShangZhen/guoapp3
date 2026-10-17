@@ -31,13 +31,13 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.duanju.duanju_app"
+        applicationId = "com.duanju.zhenguojian.lite"
         minSdk = 26
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
-        versionName = flutter.versionName
-        manifestPlaceholders["appLabel"] = if (allSources) "真果鉴" else "红果鉴"
-        manifestPlaceholders["appBanner"] = if (allSources) "@drawable/tv_banner_all_sources" else "@drawable/tv_banner"
+        versionName = "${flutter.versionName}-lite"
+        manifestPlaceholders["appLabel"] = "真果鉴 Lite"
+        manifestPlaceholders["appBanner"] = "@drawable/tv_banner_all_sources"
     }
 
     signingConfigs {

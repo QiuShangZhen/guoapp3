@@ -60,8 +60,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - edition: hongguojian
-            arguments: ''
+          # 个人 fork：只出一个真果鉴 Lite 包，避免重复构建
           - edition: zhenguojian
             arguments: '--all-sources'
     steps:
@@ -114,8 +113,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - edition: hongguojian
-            arguments: ''
+          # 个人 fork：只出一个真果鉴 Lite 包，避免重复构建
           - edition: zhenguojian
             arguments: '--all-sources'
     steps:
@@ -164,8 +162,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - edition: hongguojian
-            arguments: ''
+          # 个人 fork：只出一个真果鉴 Lite 包，避免重复构建
           - edition: zhenguojian
             arguments: '--all-sources'
     steps:

@@ -23,15 +23,18 @@ class SourceSite {
   };
 
   static const hongguo = SourceSite('hongguo', '红果', '短剧 · 漫剧 · AI 剧');
-  static const knownValues = [
-    hongguo,
+  // Lite 版不启用红果源，与对外分发的 Lite 包保持一致。
+  static const liteValues = [
     SourceSite('huangdou', '黄豆', '精选短剧'),
     SourceSite('huangju', '黄剧', '热门 · 最新 · 分类短剧'),
     SourceSite('huangguo-video', '黄果视频', '视频剧集'),
     SourceSite('huangguoai', '黄果 AI', 'AI 短剧'),
     SourceSite('cloudfront', '黄果旧版', '旧 API 剧库'),
   ];
-  static const values = allSourcesEnabled ? knownValues : [hongguo];
+  static const knownValues = [hongguo, ...liteValues];
+  static const values = liteBuild
+      ? liteValues
+      : (allSourcesEnabled ? knownValues : [hongguo]);
   static bool isAvailable(String id) => values.any((site) => site.id == id);
   static SourceSite byId(String id) =>
       knownValues.firstWhere((site) => site.id == id, orElse: () => hongguo);
