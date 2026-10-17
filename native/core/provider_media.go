@@ -35,7 +35,14 @@ func (d *Downloader) providerBaseURL(source string) string {
 		configured, fallback = d.cfg.HongguoURL, hongguoBaseURL
 	case sourceHuangju:
 		configured, fallback = d.cfg.HuangjuURL, huangjuBaseURL
+	case sourceYeguo:
+		configured, fallback = d.cfg.YeguoURL, yeguoBaseURL
+	case sourceDSD:
+		configured, fallback = d.cfg.DSDURL, dsdBaseURL
 	default:
+		if spec, found := duanjuSourceSpecFor(source); found {
+			return d.duanjuBaseURL(spec.ID)
+		}
 		fallback = "https://d2pypzndaqisk.cloudfront.net"
 	}
 	return strings.TrimRight(firstNonEmpty(configured, fallback), "/")
@@ -58,14 +65,21 @@ func providerSourceForURL(raw string) string {
 		return sourceHongguo
 	case host == "huangju.net" || host == "www.huangju.net" || host == "api.huangju.net":
 		return sourceHuangju
+	case host == "ygdj7.com" || host == "www.ygdj7.com" ||
+		host == "analyze.buxefaex.cc" || strings.HasSuffix(host, ".buxefaex.cc") ||
+		strings.HasSuffix(host, ".fzchosdi.cc") ||
+		host == "delta.ygrwdsgt.cc" || host == "yeguodj.com" || host == "www.yeguodj.com":
+		return sourceYeguo
+	case host == "dsd.com.se" || host == "www.dsd.com.se":
+		return sourceDSD
 	default:
-		return ""
+		return duanjuSourceForHost(host)
 	}
 }
 
 func (d *Downloader) providerURLCandidates(raw string) []string {
 	source := providerSourceForURL(raw)
-	if source == "" || source == sourceHuangju {
+	if source == "" || source == sourceHuangju || source == sourceYeguo || isDuanjuProviderSource(source) {
 		return []string{raw}
 	}
 	parsed, _ := url.Parse(raw)
@@ -103,6 +117,15 @@ func (d *Downloader) resolveProviderMedia(ctx context.Context, task Task) (provi
 	}
 	if chapter.Source == sourceHuangju {
 		return d.resolveHuangjuMedia(ctx, task)
+	}
+	if chapter.Source == sourceYeguo {
+		return d.resolveYeguoMedia(ctx, task)
+	}
+	if chapter.Source == sourceDSD {
+		return d.resolveDSDMedia(ctx, task)
+	}
+	if isDuanjuProviderSource(chapter.Source) {
+		return d.resolveDuanjuMedia(ctx, task)
 	}
 	if strings.HasPrefix(chapter.VideoURL, "hongguo-cenc://") {
 		return d.resolveHongguoMedia(ctx, task)

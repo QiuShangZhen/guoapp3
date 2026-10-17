@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 
 import 'lan_controller.dart';
 import 'local_store.dart';
+import 'remote_widgets.dart';
 import 'widgets.dart';
 
 IconData lanDeviceIcon(String kind) => switch (kind) {
@@ -72,9 +73,8 @@ Future<LanConnection?> chooseLanDevice(
 void openLanSync(BuildContext context) {
   final controller = LanController.current;
   if (controller == null) {
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text('设备互联尚未就绪')));
+    ScaffoldMessenger.of(context)
+        .showSnackBar(const SnackBar(content: Text('设备互联尚未就绪')));
     return;
   }
   Navigator.push(
@@ -97,6 +97,12 @@ class _LanSyncScreenState extends State<LanSyncScreen> {
   bool _cancelling = false;
   String? _error;
   LanController get link => widget.controller;
+
+  @override
+  void initState() {
+    super.initState();
+    ensureTelevisionFocus(context);
+  }
 
   Future<void> _perform(Future<void> Function() action) async {
     if (_busy) return;
@@ -1022,7 +1028,9 @@ class LanPushButton extends StatelessWidget {
             ? '推送'
             : '推送到 ' + link.connection!.peer.name,
         onPressed: onPressed,
-        style: IconButton.styleFrom(minimumSize: const Size(48, 48)),
+        constraints: const BoxConstraints.tightFor(width: 36, height: 36),
+        padding: EdgeInsets.zero,
+        iconSize: 22,
         icon: link.pushing
             ? const SizedBox(
                 width: 22,

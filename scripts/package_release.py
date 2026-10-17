@@ -53,7 +53,6 @@ else:
                 if relative == 'zhenguojian.exe':
                     relative = variant.slug + '.exe'
                 archive.write(source, relative)
-                print('  ' + relative)
     artifacts.append(target)
 
 checksums = []

@@ -9,6 +9,7 @@ import 'local_store.dart';
 import 'media_library.dart';
 import 'models.dart';
 import 'player_screen.dart';
+import 'remote_widgets.dart';
 import 'settings_screen.dart';
 import 'merge_queue_screen.dart';
 
@@ -34,6 +35,7 @@ class _LocalMediaScreenState extends State<LocalMediaScreen> {
   @override
   void initState() {
     super.initState();
+    ensureTelevisionFocus(context);
     _refresh();
   }
 
@@ -307,9 +309,9 @@ class _LocalMediaScreenState extends State<LocalMediaScreen> {
                               children: [
                                 Text(
                                   item.drama.title,
-                                  style: Theme.of(
-                                    context,
-                                  ).textTheme.titleMedium,
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .titleMedium,
                                 ),
                                 const SizedBox(height: 6),
                                 Text(
@@ -322,9 +324,9 @@ class _LocalMediaScreenState extends State<LocalMediaScreen> {
                                 if (item.merged)
                                   Text(
                                     '视频转码 ${item.videoTranscodes} 集 · 音轨处理 ${item.audioTranscodes} 集',
-                                    style: Theme.of(
-                                      context,
-                                    ).textTheme.bodySmall,
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .bodySmall,
                                   ),
                                 if (item.merged)
                                   TextButton.icon(

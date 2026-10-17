@@ -26,21 +26,21 @@ def main():
             archive.extractall(directory)
         media = directory / 'fixture.mp4'
         subprocess.run(['ffmpeg', '-v', 'error', '-y', '-f', 'lavfi',
-                        '-i', 'testsrc2=size=160x90:rate=12', '-t', '3',
-                        '-c:v', 'libx264', '-threads', '1', str(media)], check=True)
+                        '-i', 'testsrc2=size=160x90:rate=12',
+                        '-f', 'lavfi', '-i', 'sine=frequency=440:sample_rate=48000',
+                        '-t', '3', '-c:v', 'libx264', '-c:a', 'aac', '-threads', '1', str(media)], check=True)
         report = directory / 'result.json'
-        result = subprocess.run([str(directory / (variant.slug + '.exe')), '--package-smoke', str(report), str(media)],
-                                cwd=directory, check=False, timeout=90)
-        if report.is_file():
-            evidence = json.loads(report.read_text(encoding='utf-8'))
-        else:
-            evidence = {'ok': False, 'error': '未生成检查结果，退出码 ' + str(result.returncode)}
-        print(json.dumps(evidence, ensure_ascii=False))
-        if evidence.get('ok') is not True:
-            raise SystemExit('Windows 包启动验收未通过：' + json.dumps(evidence, ensure_ascii=False))
+        process = subprocess.run([str(directory / (variant.slug + '.exe')), '--package-smoke', str(report), str(media)],
+                                 cwd=directory, timeout=90)
+        if not report.is_file():
+            raise SystemExit(f'Windows 包启动失败，退出码 {process.returncode}，未生成验收报告。')
+        evidence = json.loads(report.read_text(encoding='utf-8'))
+        if process.returncode != 0 or evidence.get('ok') is not True:
+            raise SystemExit(f'Windows 包启动验收未通过：{evidence}')
         output = root / 'build' / 'windows-package-smoke.json'
         output.parent.mkdir(parents=True, exist_ok=True)
         output.write_text(json.dumps(evidence, indent=2) + '\n', encoding='utf-8')
+        print(json.dumps(evidence))
 
 
 if __name__ == '__main__':

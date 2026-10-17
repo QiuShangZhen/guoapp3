@@ -7,6 +7,7 @@ import 'core_bridge.dart';
 import 'downloads_screen.dart';
 import 'local_store.dart';
 import 'models.dart';
+import 'remote_widgets.dart';
 import 'widgets.dart';
 
 class BatchDownloadScreen extends StatefulWidget {
@@ -30,6 +31,7 @@ class _BatchDownloadScreenState extends State<BatchDownloadScreen> {
   @override
   void initState() {
     super.initState();
+    ensureTelevisionFocus(context);
     _batch = BatchDownloads(widget.repository, widget.store, widget.dramas);
     unawaited(_batch.prepare());
   }
@@ -162,9 +164,9 @@ class _BatchDownloadScreenState extends State<BatchDownloadScreen> {
                                     style: item.error == null
                                         ? null
                                         : TextStyle(
-                                            color: Theme.of(
-                                              context,
-                                            ).colorScheme.error,
+                                            color: Theme.of(context)
+                                                .colorScheme
+                                                .error,
                                           ),
                                   ),
                                 ),

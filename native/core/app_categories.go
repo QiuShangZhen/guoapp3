@@ -59,6 +59,13 @@ func validNativeCategory(source, category string) bool {
 		return strings.TrimSpace(category) == category
 	case sourceHuangju:
 		return category == huangjuNewestCategory || validHuangjuID(category) && !strings.HasPrefix(category, "@")
+	case sourceYeguo:
+		return validYeguoCategory(category)
+	case sourceDSD:
+		return webProviderNumericID.MatchString(category)
+	}
+	if isDuanjuProviderSource(source) {
+		return validDuanjuCategory(source, category)
 	}
 	return false
 }
@@ -107,7 +114,27 @@ func (engine *nativeEngine) nativeCategories(ctx context.Context, source string,
 		if err == nil {
 			all = append(all, categories...)
 		}
+	case sourceYeguo:
+		var categories []nativeCategory
+		categories, err = d.fetchYeguoCategories(ctx)
+		if err == nil {
+			all = append(all, categories...)
+		}
+	case sourceDSD:
+		var categories []nativeCategory
+		categories, err = d.fetchDSDCategories(ctx, force)
+		if err == nil {
+			all = append(all, categories...)
+		}
 	default:
+		if isDuanjuProviderSource(source) {
+			var categories []nativeCategory
+			categories, err = d.fetchDuanjuCategories(ctx, source)
+			if err == nil {
+				all = append(all, categories...)
+			}
+			break
+		}
 		return nil, errors.New("请选择有效站源")
 	}
 	if err != nil {

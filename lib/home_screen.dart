@@ -13,6 +13,7 @@ import 'catalog_sort_sheet.dart';
 import 'recommendations_screen.dart';
 import 'rankings_screen.dart';
 import 'detail_screen.dart';
+import 'playback_launch_screen.dart';
 import 'downloads_screen.dart';
 import 'local_store.dart';
 import 'lan_screen.dart';
@@ -53,7 +54,6 @@ class _HomeScreenState extends State<HomeScreen> {
   int _generation = 0;
   int _tab = 0;
   String _submittedQuery = '';
-  bool _failedMore = false;
   final _categorySelections = <String, String>{};
   late final CatalogBrowser _browser;
   bool _searchVisible = false;
@@ -65,9 +65,14 @@ class _HomeScreenState extends State<HomeScreen> {
   final _selectedDramas = <String, Drama>{};
   Timer? _cacheRefreshTimer;
   bool _refreshingUpdatedCache = false;
-  bool _updateNotice = false;
   bool _selectionMode = false;
   bool _showRecommendations = false;
+  bool _catalogLoadScheduled = false;
+  final _filtersKey = GlobalKey<RemoteRowState>();
+  final _gridKey = GlobalKey<RemoteGridState>();
+  final _navKey = GlobalKey<RemoteListState>();
+  final _appBarFocus = FocusNode(debugLabel: 'tv-appbar');
+  final _selectionFocus = FocusNode(debugLabel: 'tv-selection');
 
   List<SourceGroup> get _sourceGroups {
     final groups = SourceGroup.fromSources(widget.store.sources);
@@ -94,8 +99,8 @@ class _HomeScreenState extends State<HomeScreen> {
     }
     final names = online.map((source) => source.name).join('、');
     return online.length == _group.sources.length
-        ? '搜索${names}短剧'
-        : '搜索${names}及本机剧库';
+        ? '搜索$names'
+        : '搜索$names及本机剧库';
   }
 
   String get _category => _categorySelections[_group.id] ?? '';
@@ -144,7 +149,6 @@ class _HomeScreenState extends State<HomeScreen> {
     if (widget.repository.supportsSourceManagement) {
       if (_group.sources.any((source) => _updater.busy(source.id))) return;
       _pauseCatalog();
-      setState(() => _updateNotice = true);
       await _updater.update(_group.sources);
       return;
     }
@@ -393,6 +397,7 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
+    _scroll.addListener(_onCatalogScroll);
     _source = SourceSite.byId(widget.store.source);
     _allSources = widget.store.catalogView.allSources;
     _browser = CatalogBrowser(widget.repository);
@@ -423,8 +428,38 @@ class _HomeScreenState extends State<HomeScreen> {
     unawaited(widget.repository.cancelSuggestions());
     _debounce?.cancel();
     _search.dispose();
+    _scroll.removeListener(_onCatalogScroll);
     _scroll.dispose();
+    _appBarFocus.dispose();
+    _selectionFocus.dispose();
     super.dispose();
+  }
+
+  void _onCatalogScroll() {
+    if (!mounted ||
+        _showRecommendations ||
+        !_hasMore ||
+        _loading ||
+        _loadingMore ||
+        !_scroll.hasClients) {
+      return;
+    }
+    final position = _scroll.position;
+    final threshold = (position.viewportDimension * 1.5).clamp(320.0, 900.0);
+    if (position.extentAfter > threshold || _catalogLoadScheduled) return;
+    _catalogLoadScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _catalogLoadScheduled = false;
+      if (!mounted ||
+          _showRecommendations ||
+          !_hasMore ||
+          _loading ||
+          _loadingMore ||
+          !_scroll.hasClients) {
+        return;
+      }
+      unawaited(_load(more: true));
+    });
   }
 
   void _metadataChanged() {
@@ -456,7 +491,6 @@ class _HomeScreenState extends State<HomeScreen> {
     setState(() {
       _error = null;
       if (query.isNotEmpty) _categorySelections[group.id] = '';
-      _failedMore = false;
       if (more) {
         _loadingMore = true;
       } else {
@@ -498,7 +532,6 @@ class _HomeScreenState extends State<HomeScreen> {
         _loading = false;
         _loadingMore = false;
         _error = error.toString();
-        _failedMore = more;
       });
     }
   }
@@ -513,7 +546,6 @@ class _HomeScreenState extends State<HomeScreen> {
       _showRecommendations = false;
       _selectionMode = false;
       _selectedDramas.clear();
-      _updateNotice = false;
       _source = source;
       _allSources = allSources;
       _items = [];
@@ -586,15 +618,25 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void _openDrama(Drama drama, {bool resume = false, bool download = false}) {
     _pauseCatalog();
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => DetailScreen(
-          drama: drama,
-          repository: widget.repository,
-          store: widget.store,
-          resumeOnOpen: resume,
-          downloadOnOpen: download,
+    if (download) {
+      Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => DetailScreen(
+            drama: drama,
+            repository: widget.repository,
+            store: widget.store,
+            downloadOnOpen: true,
+          ),
         ),
+      );
+      return;
+    }
+    unawaited(
+      openPlaybackDirectly(
+        context,
+        drama: drama,
+        repository: widget.repository,
+        store: widget.store,
       ),
     );
   }
@@ -618,9 +660,8 @@ class _HomeScreenState extends State<HomeScreen> {
     }
     if (!_selectedDramas.containsKey(drama.id) &&
         _selectedDramas.length >= BatchDownloads.maxDramas) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('一次最多选择 50 部短剧，请分批下载')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('一次最多选择 50 部短剧，请分批下载')));
       return;
     }
     setState(() {
@@ -683,7 +724,7 @@ class _HomeScreenState extends State<HomeScreen> {
       selected: _selectionMode ? _selectedDramas.containsKey(drama.id) : null,
       badge: following == null
           ? null
-          : '${following.status.label}${following.newEpisodes > 0 ? ' · 更新 ${following.newEpisodes} 集' : ''}',
+          : '${following.status.label}${following.hasUpdates ? ' · ${following.updateLabel}' : ''}',
     );
   }
 
@@ -729,6 +770,12 @@ class _HomeScreenState extends State<HomeScreen> {
       builder: (context, constraints) {
         final television = AppLayout.isTelevision(context);
         final desktop = constraints.maxWidth >= 840;
+        final navEntries = <(int, IconData, String)>[
+          (0, Icons.explore_rounded, '发现'),
+          (1, Icons.bookmark_rounded, '追剧'),
+          (2, Icons.history_rounded, '最近观看'),
+          if (widget.store.canDownload) (3, Icons.download_rounded, '下载'),
+        ];
         final scaffold = Scaffold(
           appBar: AppBar(
             toolbarHeight: television ? 64 : null,
@@ -790,6 +837,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
                 TextButton(
                   key: const ValueKey('cancel-catalog-selection'),
+                  focusNode: _appBarFocus,
                   onPressed: _cancelSelection,
                   child: const Text('取消'),
                 ),
@@ -940,31 +988,33 @@ class _HomeScreenState extends State<HomeScreen> {
               children: [
                 if (television) ...[
                   SizedBox(
-                    width: 164,
+                    width: 176,
                     child: Padding(
                       padding: const EdgeInsets.fromLTRB(8, 24, 8, 12),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          for (final entry in [
-                            (Icons.explore_rounded, '发现'),
-                            (Icons.bookmark_rounded, '追剧'),
-                            (Icons.history_rounded, '最近观看'),
-                            if (widget.store.canDownload)
-                              (Icons.download_rounded, '下载'),
-                          ].indexed)
-                            Padding(
-                              padding: const EdgeInsets.only(bottom: 14),
-                              child: RemoteButton(
-                                key: ValueKey('tv-nav-${entry.$1}'),
-                                label: entry.$2.$2,
-                                icon: entry.$2.$1,
-                                selected: _tab == entry.$1,
-                                autofocus: entry.$1 == 0,
-                                onPressed: () => _changeTab(entry.$1),
-                              ),
-                            ),
+                      child: RemoteList(
+                        key: _navKey,
+                        itemKeys: [
+                          for (final entry in navEntries) '${entry.$1}',
                         ],
+                        itemExtent: 60,
+                        spacing: 14,
+                        padding: EdgeInsets.zero,
+                        autofocus: true,
+                        onExitRight: _tab == 0
+                            ? () => _gridKey.currentState?.focusCurrent()
+                            : null,
+                        itemBuilder: (_, index, node, onFocus) {
+                          final entry = navEntries[index];
+                          return RemoteButton(
+                            key: ValueKey('tv-nav-${entry.$1}'),
+                            label: entry.$3,
+                            icon: entry.$2,
+                            selected: _tab == entry.$1,
+                            focusNode: node,
+                            onFocus: onFocus,
+                            onPressed: () => _changeTab(entry.$1),
+                          );
+                        },
                       ),
                     ),
                   ),
@@ -1019,6 +1069,10 @@ class _HomeScreenState extends State<HomeScreen> {
                           repository: widget.repository,
                           store: widget.store,
                           history: _tab == 2,
+                          remoteAutofocus: television,
+                          onExitLeft: television
+                              ? () => _navKey.currentState?.focusCurrent()
+                              : null,
                           onOpen: _openDrama,
                           onContinue: (drama) =>
                               _openDrama(drama, resume: true),
@@ -1148,6 +1202,13 @@ class _HomeScreenState extends State<HomeScreen> {
           categories: _displayCategories,
           category: _displayCategory,
           error: _categoriesError,
+          remoteKey: _filtersKey,
+          onExitUp: television && _selectionMode
+              ? () => _appBarFocus.requestFocus()
+              : null,
+          onExitDown: television
+              ? () => _gridKey.currentState?.focusCurrent()
+              : null,
           onCategory: _changeCategory,
           onRetry: () => _loadCategories(force: true),
           trailing: Row(
@@ -1173,52 +1234,16 @@ class _HomeScreenState extends State<HomeScreen> {
                 repository: widget.repository,
                 store: widget.store,
                 embedded: true,
+                gridKey: _gridKey,
+                onExitLeft: television
+                    ? () => _navKey.currentState?.focusCurrent()
+                    : null,
               ),
             ),
           )
         else ...[
-          if (widget.repository.supportsSourceManagement &&
-              (_updateNotice ||
-                  _group.sources.any((source) => _updater.busy(source.id))))
-            _updateStatus(),
           if (_loading && _items.isNotEmpty)
             const LinearProgressIndicator(minHeight: 2),
-          if (_error != null && _items.isNotEmpty)
-            Container(
-              margin: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-              padding: const EdgeInsets.fromLTRB(12, 8, 6, 8),
-              decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.errorContainer,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      _error!,
-                      maxLines: 3,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Theme.of(context).colorScheme.onErrorContainer,
-                      ),
-                    ),
-                  ),
-                  TextButton(
-                    onPressed: _loading || _loadingMore
-                        ? null
-                        : () => _load(more: _failedMore, force: true),
-                    child: const Text('重试'),
-                  ),
-                  if (widget.repository.supportsSourceManagement)
-                    IconButton(
-                      tooltip: '站源诊断',
-                      onPressed: _manageSources,
-                      icon: const Icon(Icons.network_check),
-                    ),
-                ],
-              ),
-            ),
           Expanded(
             child: GestureDetector(
               onHorizontalDragEnd: television ? null : _swipeCategory,
@@ -1273,8 +1298,6 @@ class _HomeScreenState extends State<HomeScreen> {
                           return _televisionGrid(
                             items,
                             constraints.maxWidth,
-                            key:
-                                'catalog-${_group.id}-$_category-$_submittedQuery',
                             controller: _scroll,
                             footer: Padding(
                               padding: const EdgeInsets.fromLTRB(18, 0, 18, 24),
@@ -1336,9 +1359,9 @@ class _HomeScreenState extends State<HomeScreen> {
                                         : Text(
                                             '已经看到这里的全部剧集',
                                             style: TextStyle(
-                                              color: Theme.of(
-                                                context,
-                                              ).colorScheme.onSurfaceVariant,
+                                              color: Theme.of(context)
+                                                  .colorScheme
+                                                  .onSurfaceVariant,
                                               fontSize: 12,
                                             ),
                                           ),
@@ -1403,6 +1426,7 @@ class _HomeScreenState extends State<HomeScreen> {
               );
               final next = FilledButton(
                 key: const ValueKey('download-selected-dramas'),
+                focusNode: _selectionFocus,
                 onPressed: count == 0 ? null : _downloadSelected,
                 style: FilledButton.styleFrom(
                   minimumSize: const Size(96, 48),
@@ -1435,88 +1459,25 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _updateStatus() {
-    final sources = _group.sources;
-    final busy = sources.any((source) => _updater.busy(source.id));
-    final messages = <String>[];
-    var failed = false;
-    for (final source in sources) {
-      final status = _updater.status(source.id);
-      final error = [
-        _updater.error(source.id),
-        status?.error ?? '',
-        status?.storageError ?? '',
-      ].where((value) => value.isNotEmpty).toSet().join('；');
-      if (error.isNotEmpty) {
-        failed = true;
-        messages.add('${source.name}：$error');
-      } else if (status != null) {
-        messages.add(
-          '${source.name}：${status.stage.isEmpty ? '准备更新' : status.stage}'
-          '${status.total > 0 ? ' ${status.completed}/${status.total}' : ''}'
-          '${!status.running && status.added > 0 ? ' · 新增 ${status.added} 部' : ''}',
-        );
-      } else if (busy) {
-        messages.add('${source.name}：正在启动');
-      }
-    }
-    final colors = Theme.of(context).colorScheme;
-    return Material(
-      color: failed ? colors.errorContainer : colors.surfaceContainerHighest,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(12, 4, 4, 4),
-        child: Row(
-          children: [
-            Expanded(
-              child: Text(
-                messages.isEmpty ? '准备更新剧库' : messages.join('；'),
-                maxLines: 3,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: 12,
-                  color: failed ? colors.onErrorContainer : colors.onSurface,
-                ),
-              ),
-            ),
-            if (busy)
-              TextButton(
-                onPressed: () => _updater.stop(sources),
-                child: const Text('停止'),
-              ),
-            IconButton(
-              tooltip: '查看更新详情',
-              onPressed: _manageSources,
-              icon: const Icon(Icons.info_outline_rounded, size: 20),
-            ),
-            if (!busy)
-              IconButton(
-                tooltip: '收起更新提示',
-                onPressed: () => setState(() => _updateNotice = false),
-                icon: const Icon(Icons.close_rounded, size: 20),
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-
   Widget _televisionGrid(
     List<Drama> items,
     double width, {
-    required String key,
     ScrollController? controller,
     Widget? footer,
   }) {
     final columns = ((width - 36) / 150).floor().clamp(1, 8);
     final tileWidth = (width - 36 - (columns - 1) * 14) / columns;
     return RemoteGrid(
-      key: ValueKey('tv-grid-$key'),
+      key: _gridKey,
       itemKeys: items.map((item) => item.id).toList(),
       columns: columns,
       itemExtent: DramaTile.extentFor(context, tileWidth - 14) + 14,
       controller: controller,
       footer: footer,
       padding: const EdgeInsets.fromLTRB(18, 2, 18, 18),
+      onExitUp: () => _filtersKey.currentState?.focusCurrent(),
+      onExitLeft: () => _navKey.currentState?.focusCurrent(),
+      onExitDown: _selectionMode ? () => _selectionFocus.requestFocus() : null,
       itemBuilder: (_, index, node, onFocus) =>
           _catalogTile(items[index], focusNode: node, onFocus: onFocus),
     );

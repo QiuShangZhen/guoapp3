@@ -19,6 +19,9 @@ class SavedLibrary extends StatefulWidget {
     required this.onOpen,
     required this.onContinue,
     this.onDownload,
+    this.remoteAutofocus = false,
+    this.onExitLeft,
+    this.onExitUp,
   });
 
   final AppRepository repository;
@@ -27,6 +30,9 @@ class SavedLibrary extends StatefulWidget {
   final ValueChanged<Drama> onOpen;
   final ValueChanged<Drama> onContinue;
   final ValueChanged<Drama>? onDownload;
+  final bool remoteAutofocus;
+  final VoidCallback? onExitLeft;
+  final VoidCallback? onExitUp;
 
   @override
   State<SavedLibrary> createState() => _SavedLibraryState();
@@ -82,7 +88,7 @@ class _SavedLibraryState extends State<SavedLibrary> {
     final state = widget.store.following(drama.id);
     final badge = state == null
         ? null
-        : '${state.label}${state.newEpisodes > 0 ? ' · 更新 ${state.newEpisodes} 集' : ''}';
+        : '${state.label}${state.hasUpdates ? ' · ${state.updateLabel}' : ''}';
     return DramaTile(
       key: ValueKey('saved-${drama.id}'),
       drama: drama,
@@ -116,7 +122,7 @@ class _SavedLibraryState extends State<SavedLibrary> {
         return widget.history ||
             _filter.isEmpty ||
             (_filter == 'updates'
-                ? (state?.newEpisodes ?? 0) > 0
+                ? state?.hasUpdates == true
                 : state?.status.name == _filter);
       }).toList();
       final ids = items.map((drama) => drama.id).toSet();
@@ -255,6 +261,9 @@ class _SavedLibraryState extends State<SavedLibrary> {
                           columns: columns,
                           itemExtent:
                               DramaTile.extentFor(context, tileWidth - 14) + 14,
+                          autofocus: widget.remoteAutofocus,
+                          onExitLeft: widget.onExitLeft,
+                          onExitUp: widget.onExitUp,
                           itemBuilder: (_, index, node, onFocus) => _tile(
                             items[index],
                             focusNode: node,
